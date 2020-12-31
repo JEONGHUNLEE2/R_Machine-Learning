@@ -1,0 +1,82 @@
+#R을 활용한 머신러닝 
+save.image("class.RData")
+list.files(pattern = 'RDS') # 현재 작업경로 포함된 파일명을 콘솔에 출력?
+#install.packages("tidyverse")
+library(tidyverse)
+getwd()
+#절대경로 
+setwd()
+#상대경로
+setwd(ddir = './data')
+
+df <- read.csv("ToyotaCorolla.csv")
+str(df)
+
+# Age : 개월수
+# KM : 주행거리
+# FuelType : Diesel, Petrol. CNG -> 범주형 (CNG는 제외)
+# HP : 마력 <= 120
+# MetColor : 금속 컬러 -> 범주형 
+# Automatic : 미션(오토,수동) -> 범주형 
+# CC : 엔진크기  (상관성 분석 통과 못함, 피어슨 상관분석해서 0.05 이상 안됫나봄)
+# Doors : 문 개수 >= 3
+# Weight : 차량 개수 >= 1200
+
+
+df <- df %>% 
+  filter(HP <= 120 & Weight <= 1200 & Doors >= 3)
+
+df <- df %>% select(-CC)
+
+table(df$FuelType)
+
+df <- df %>% 
+  filter(FuelType %in% c('Diesel', 'Petrol')) %>% 
+  mutate(FuelType = factor(x = FuelType),
+         Automatic = factor(x = Automatic),
+         MetColor = factor(x = MetColor))
+str(df)
+summary(df)
+
+#정규분포 확인하는 법 
+shapiro.test(df$Price)
+
+n <- nrow(x = df)
+set.seed(seed = 1234)
+index <- sample(x = n, size = n*0.7, replace = FALSE)
+trainSet <- df %>% slice(index)
+testSet <- df %>%  slice(-index)
+
+mean(trainSet$Price)
+mean(testSet$Price)
+
+fit <- lm(formula = Price ~ Age, data = trainSet)
+summary(fit)
+
+par(mfrow = c(2,2))
+plot(x=fit)
+par(mfrow = c(1,1))
+
+#
+hist(x=fit$residuals)
+shapiro.test(fit$residuals)
+
+#
+#install.packages("car")
+library(car)
+ncvTest(fit)
+durbinWatsonTest(fit)
+crPlots(fit)
+influencePlot(fit)
+
+real<- testSet$Price
+
+pred1 <- predict(fit, newdata = testSet)
+
+#install.packages("MLmetrics")
+library(MLmetrics)
+
+MSE(y_pred = pred1, y_true = real)
+RMSE(y_pred = pred1, y_true = real)
+MAE(y_pred = pred1, y_true = real)
+MAPE(y_pred = pred1, y_true = real)
