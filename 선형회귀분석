@@ -80,3 +80,25 @@ MSE(y_pred = pred1, y_true = real)
 RMSE(y_pred = pred1, y_true = real)
 MAE(y_pred = pred1, y_true = real)
 MAPE(y_pred = pred1, y_true = real)
+
+full <- lm(price ~., data=trainSet)
+null <- lm(price ~1, data=trainSet)
+fit2<- step(object = null, scope=list(lower=null, upper=full),
+            direction = 'both')
+
+summary(fit2)
+vif(fit2)
+
+library(reghelper) #표준화 계수
+beta.z <- beta(model = fit2)
+round(x=beta.z$coefficients[,1],digits = 4) #digits = 4번째 자릿 수
+#나온 값 확인, -  + 상관없이 숫자가 높은 순으로 영향력이 크다. 
+#분석보고서 제출할 때 이 작업을 꼭 해주는게 좋을거같다. 
+
+#마지막으로 선형 단순선형회귀분석 모델과 다중선형회귀분석모델 결과비교
+
+RMSE(y_pred = pred1, y_true = real)
+RMSE(y_pred = pred2, y_true = real)
+
+#y_pred 예측모델, t-true는 리얼값 비교해서 0에 가까운게 정확도가 높은 모델
+#RMSE 회귀분석모델의 성능지표 : MSE의양의제곱근으로,실제값과척도가같도록 한 것 
