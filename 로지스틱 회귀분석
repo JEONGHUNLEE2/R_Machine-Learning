@@ -1,0 +1,137 @@
+#로지스틱 회귀분석 3주차
+
+library(tidyverse)
+url <- 'https://bit.ly/university_admit'
+guess_encoding(url) #파일 인코딩이 어떻게 되어있는지 알려주는! ASCII,EUC_KR, CP949면 'fileEncoding' = 이거 안해도됨
+guess_encoding(file = 'https://www.naver.com') #가장 높은 encoding 타임 사용하면 됌!
+
+df <- read.csv(url)
+#str()함수를 실행하는 이유 : 컬럼별 벡터 자료형을 확인하기 위함! 
+
+str(df)
+head(df, n=10L)# 'L'은 정수
+summary(df) #컬럼별 기술 통계량을 빠르게 확인하기 위함!
+
+#df$admit <- as.factor(df$admit)
+#df$rank <- as.factor(df$rank)
+#형태변환
+vars <- c('admit','rank')
+df[vars] <- map_df(.x=df[vars],.f = as.factor) # map(), map_df()공부하기 for 루프보다 훨씬 낫다. 
+summary(df)
+
+df$admit %>% table() %>% prop.table()*100 #table 빈도수 #prop.table()비율,퍼센트 # 이거 유용하게 쓸수 있겠다. 
+df$rank %>% table() %>% prop.table()*100 
+#apply(), lapply(), sapply() 공부해야함
+
+
+boxplot(formula = gre~admit, 
+        data=df, 
+        color = 'white', 
+        pch = 19, 
+        outcol = 'red')
+
+avg <- df %>%  group_by(admit) %>% summarise(m = mean(gre)) #평균값 추가적으로 그래프에 찍어주는거
+points(formula = m ~ admit, 
+       data = avg, 
+       pch = 19,
+       col= 'blue',
+       cex = 1.2)
+
+#연속형 숫자는 정규분포 해야한다. 
+by(data = df$gre, INDICES = df$admit, FUN = shapiro.test) #합격자 그룹, 불합격자 그룹 한꺼번에 정규성 정규분포확인 
+
+#정규분포를 따르지 않아서 
+#귀무 : 합격자와 불합격자의 gre의 차이 없다. 
+#대립 : 차이가 있다. 
+wilcox.test(gre~admit, data=df)
+
+###
+boxplot(formula = gpa~admit, 
+        data=df, 
+        color = 'white', 
+        pch = 19, 
+        outcol = 'red')
+
+avg <- df %>%  group_by(admit) %>% summarise(m = mean(gpa)) 
+points(formula = m ~ admit, 
+       data = avg, 
+       pch = 19,
+       col= 'blue',
+       cex = 1.2)
+#p_value가 0.05 이하이니까 정규분포를 따르지 않는다. 
+by(data = df$gpa, INDICES = df$admit, FUN = shapiro.test)
+
+wilcox.test(gpa~admit, data=df)
+
+
+#두 범주형 변수 간 상관성 확인 -> 카이제곱 
+library(gmodels)
+CrossTable(x= df$rank, y=df$admit)
+
+#Cell contents, 빈도수, 카이제곱 통계량, 빈도수를 로우토탈로 나눈값, 컬럼값으러 나눈값, 
+#카이제곱이 통계량이 가장중요!!
+#두번째줄 확인 0근처로 와야하는데 
+#관계가 없으면 0에 가까워진다
+chisq.test(df$rank,df$admit) #독립성 검정이라고도 함! 
+
+n<-nrow(df)
+set.seed(seed=1234)
+index <- sample(n, size = n*0.7, replace = FALSE)
+
+trainSet <- df %>% slice(index)
+testSet<-df %>% slice(-index)
+
+trainSet$admit %>% table() %>% prop.table()*100
+testSet$admit %>% table() %>% prop.table()*100
+
+fit1<- glm()#glm 목표변수가 정규분포하지 않을때, lm 정규분포할때 #glm은 F값 p-value없고 아래부분 봐야함 deviance 이탈도(=멍청한 정도)
+#
+
+fit1<- glm(formula = admit~.,
+           data = trainSet,
+           family = binomial(link = 'logit'))
+summary(fit1)
+
+#회귀계쑤 구한거..?
+fit1$coefficients %>% exp() %>% round(digits = 4)
+#exp() 
+#install.packages("reghelper")
+library(reghelper)
+
+beta.z <- beta(model = fit1)
+beta.z$coefficients[,1] %>% round(digit = 4L)
+
+real <- testSet$admit
+#predict가 뭐지 
+prob1 <- predict(fit1, newdata = testSet, type = 'response')#'response'는 로지스틱에선 넣어야한다. !!
+
+pred1 <- ifelse(test = prob1>= 0.5, yes = 1, no = 0) %>%  as.factor()
+pred1
+
+#install.packages("caret")
+#install.packages("e1071")
+library(caret)
+library(e1071)
+confusionMatrix(pred1, reference = real, positive = '1')
+
+#성능 평가, 민감도와 정밀도의 조화평균인 F1 점수
+library(MLmetrics) 
+F1_Score(y_true = real, y_pred = pred1, positive = '1')
+
+#
+library(pROC)
+roc(response = real, predictor = prob1) %>% 
+  plot(main = "ROC Curve", col = 'red', lty = 1)
+
+roc(response= real, predictor = as.numeric(x=pred1)) %>% 
+  plot(col = 'blue', lty = 2, lwd = 2, add = TRUE) #add = TRue 기존 그래프에서 추가
+
+auc(response = real, predictor = prob1)
+
+#분리기준점
+rate <- trainSet$admit %>% table() %>% prop.table()
+rate[2]
+
+pred2<- ifelse(test = prob1 >= rate[2], yes = 1, no = 0) %>%as.factor()
+#coufusionMatrix, F1_Score 확인 
+#기준점을 낮췃더니 민감도가 향상
