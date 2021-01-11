@@ -1,0 +1,193 @@
+#k_nearest neighbors
+library(tidyverse)
+rm(list = ls())
+getwd()
+list.files()
+cust <- readRDS('Dataset for Cust.RDS')
+str(cust)
+
+dist(cust) #데이터간 거리(차이)
+
+scaled<-scale(cust)#평균이 0이고 표준편차가 1인 상태로 만들어줌 
+summary(scaled)
+
+apply(scaled, MARGIN = 2, FUN = sd)
+dist(scaled)        
+
+#가장 중요한거 /  데이터를 거리화해서 볼 때 데이터 표준화를 해야힌다.
+# 군집분석, K_mean
+
+set.seed(seed = 1234)
+heights <- rnorm(n = 10000, mean = 172.4, sd = 5.7)
+scaled1 <- scale(x = heights) #scale 이 표준정규분포하는거?
+#scale만 썻을 땐 표준정규분포로 만들어주는거고 
+mean(x = scaled1)
+sd(x = scaled1)
+range(scaled1)#최대,최솟값 출력 
+
+#최소가 0 최대가 1인 값으로 바꾸는 정규화!
+Min <- min(heights)
+Max <- max(heights)
+scaled2 <- scale(x = heights, center = Min, scale = Max - Min)
+mean(x = scaled2)
+sd(x = scaled2)
+range(scaled2)
+
+
+
+ url<-'https://bit.ly/white_wine_quality'
+guess_encoding(file=url)
+
+df<-read.csv(file=url,sep=';') #sep =, 뭘 기준으로 나눌지 
+str(object=df)
+head(x=df,n=10L)
+summary(object=df)
+
+tbl <- table(df$quality)
+tbl %>% prop.table() %>% cumsum() %>% round(digits=4L)*100 #cumsum은 누적합
+
+bp <- barplot(height = tbl,
+              ylim = c(0,2400),
+              xlab = 'Quality',
+              main = 'White Wine')
+
+text(bp, 
+     y= tbl, 
+     labels = tbl,
+     pos = 3,
+     col = 'blue',
+     font = 2)
+
+#as. factor 는 levels(순위)를 설정할 수 없고 factor()가능
+#목표변수 범주형으로 변환할 때는 참고 했던 변수는 삭제해야함. 
+
+df$grade <- ifelse(test = df$quality >= 7, yes = 'best', no = 'good')
+df$grade <- factor(df$grade, levels = c('good','best')) #levels 순서까지 하기위해 
+df$grade
+df$quality <- NULL #컬럼 삭제 '널(NULL) 지우겠다' , 목표변수를 'quality' 를 참고해서 만들었으므로 삭제해야함.
+str(df)
+
+
+n <- nrow(df)
+set.seed(seed = 1234)
+index <- sample(n, size= n*0.7, replace = FALSE)
+#slice 함수 뭐지
+trainSet <- df %>% slice(index)
+testSet<- df %>% slice(-index) 
+
+trainSet$grade %>% table() %>% prop.table() %>% round(digits = 4L)*100
+testSet$grade %>% table() %>% prop.table() %>% round(digits = 4L)*100
+#--- e다시 해보기 
+
+#install.packages("kknn")
+
+#이거로 k를 몇으로 할지 구한건가ㅛ..
+#답 :일반적으로훈련용데이터셋건수의제곱근을`k`로사용합니다.
+k<- trainSet %>% 
+  nrow() %>% 
+  sqrt %>%  
+  ceiling()
+
+library(kknn)
+fit1<-kknn(formula = grade ~.,
+           train = trainSet,
+           test = testSet,
+           k = k,
+           kernel = 'rectangular')
+str(fit1) # fitted.values : 결과 #prob : 확률 good 될 확률과 best가 될 확률을 구해줌. 
+summary(fit1)
+
+fit1$fitted.values
+fit1$prob[,2] #prob값에는 'good'될 확률과 'best'될 확률 가지고 있는데 [,2] best가 될 확률만 가져옴 
+
+real <- testSet$grade
+pred1 <- fit1$fitted.values #추정 라벨 
+table(pred1, real)
+
+#혼동행렬
+library(caret)
+confusionMatrix(data = pred1, reference = real, positive = 'best')
+
+library(MLmetrics) 
+F1_Score(y_true = real, y_pred = pred1, positive = 'best')
+
+prob1 <- fit1$prob[,2]#추정확률
+
+library(pROC)
+roc(response=real,predictor=prob1)%>%
+  plot(main='ROCcurve',col='red',lty=1)
+
+auc(response=real,predictor=prob1)
+
+#데이터 벨런스 맞춰주기 
+#install.packages("DMwR")
+library(DMwR)
+set.seed(seed = 1234)
+trainBal <- SMOTE(form = grade ~.,
+                  data = trainSet,
+                  perc.over = 200,
+                  k=5,
+                  perc.under = 150)
+
+
+#목표변수가 한쪽으로 치우친 불균형화된 데이터를 가지고 분류모형을 만들면 다수데이터 쪽으로
+# 정확도를 높이려는 모형이 된다. 그래서 벨런스를 맞춰야한다. 
+trainBal$grade %>%  table() %>%  prop.table() %>% round(digits = 4L)*100
+
+
+fit2 <- kknn(formula = grade~.,
+             train = trainBal,
+             test = testSet,
+             k=k,
+             kernel = 'rectangular')
+str(fit2)
+#data balancing을 하면 1) 민감도가 올라간다. 2)정밀도가 떨어진다.
+
+pred2 <- fit2$fitted.values
+table(pred1, real)
+table(pred2, real)
+
+confusionMatrix(data = pred2, reference = real, positive = 'best')
+confusionMatrix(data = pred1, reference = real, positive = 'best')
+
+F1_Score(y_true = real, y_pred = pred1, positive = 'best')
+F1_Score(y_true = real, y_pred = pred2, positive = 'best')
+
+prob2<- fit2$prob[,2]
+roc(response = real, predictor = prob2) %>% 
+  plot(col = 'blue', lty= 1, add = TRUE)
+
+auc(response = real, predictor = prob2)
+auc(response = real, predictor = prob1)
+
+
+
+
+fit3 <- kknn(formula = grade ~.,
+             train = trainBal, 
+             test = testSet, 
+             k=k,
+             kernel = 'triangular')
+
+pred3 <- fit3$fitted.values
+table(pred3, real)
+table(pred2, real)
+
+confusionMatrix(data = pred3, reference = real, positive = 'best')
+confusionMatrix(data = pred2, reference = real, positive = 'best')
+
+F1_Score(y_true = real, y_pred = pred2, positive = 'best')
+F1_Score(y_true = real, y_pred = pred3, positive = 'best')
+
+roc(response= real, predictor = prob3) %>% 
+  plot(col = 'puple', lty = 2, lwd = 2, add = TRUE)
+auc(response = real, predictor = )
+
+#knn 성능은 떨어지지만 가볍게, 거리를 기준으로 
+# 거리로 하기때문에 표준화를 해줘야한다.
+# 표준정규분포를 따르도록 만들어준다. 
+# 거리는 유클리드 거리고, 함수에서 표준화를 시켜준다. 
+# knn은 훈련셋을 깔아놓고 시험셋, k이웃 
+# Label C.M / F1  - prob -> roc, auc  
+# 밸런싱 
+# 더 성능이 뛰어난건 다음주에 배운다.
