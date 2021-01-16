@@ -1,0 +1,64 @@
+#class 5주차
+
+library(tidyverse)
+url<-'https://bit.ly/universal_bank'
+guess_encoding(file=url)
+
+df<-read.csv(url)
+str(df)
+summary(df)
+head(df)
+
+df<-df %>% select(-ID,-ZIP.Code) %>% filter(Experience >= 0)
+
+cols <- c(6,8:12)
+df[,cols] <- map_df(.x=df[,cols],.f=as.factor)
+summary(df)
+
+df$PersonalLoan %>% table() %>% prop.table() %>% round(digits = 4L) *100
+#복습할 때 균형화 해보기 SMOTE
+
+
+n <- nrow(df)
+set.seed(seed = 1234)
+index <- sample(x = n, size = n *0.7, replace = FALSE)
+
+trainSet <- df %>% slice(index)
+testSet <- df %>% slice(-index)
+
+library(DMwR)
+
+trainBal <- SMOTE(form = PersonalLoan ~.,
+                  data = trainSet,
+                  perc.over = 200,
+                  k = 5,
+                  perc.under = 150)
+
+trainBal$PersonalLoan %>% table() %>% prop.table()
+trainSet$PersonalLoan%>% table() %>% prop.table() %>% round(digits = 4L) *100
+testSet$PersonalLoan%>% table() %>% prop.table() %>% round(digits = 4L) *100
+
+#RDA는 여러개 저장
+#RDS는 객체 한개만 저장
+
+#install.packages("rpart")
+library(rpart)
+
+ctrl <- rpart.control(minsplit = 20,
+                      cp = 0.01,
+                      maxdepth = 10)
+set.seed(seed = 1234)
+fit1 <- rpart(formula = PersonalLoan~.,
+              data = trainSet,
+              control = ctrl)
+summary(fit1)
+printcp(fit1)
+plotcp(fit1)
+
+install.packages("rpart.plot")
+library(rpart.plot)
+
+rpart.plot(x = fit1, 
+           type = 2,
+           extra = 101,
+           fallen.leave = FALSE)
